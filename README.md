@@ -378,9 +378,9 @@ make build
 ```
 
 The version command returns JSON containing `version`, `protocol` and Telegram
-`layer`, without reading credentials or making network requests. The initial
+`layer`, plus optional `capabilities`, without reading credentials or making network requests. The initial
 stdin record contains `protocol: 1`, `api_id`, `api_hash`, an absolute
-`session_file`, and `updates`. The process replies with a `ready` frame. Requests
+`session_file`, `updates`, and optional `pagination` (default false). The process replies with a `ready` frame, including its capability list. Requests
 contain a unique `id`, the TL method name in `method`, and a base64 TL `payload`.
 Replies have `kind: result`, the matching ID, and either a base64 payload or an
 RPC error with `code`, `type` and `argument`. Pushes use `kind: update`; terminal
@@ -388,7 +388,7 @@ errors use `kind: fatal`. Both peers must use the same protocol and Telegram TL
 layer. Frames are limited to 32 MiB; each request times out after 45 seconds.
 
 The bridge supports configuration lookup, username/invite resolution, bounded
-history reads, search counters and update-state reads. Sending, joining and
+history reads, search counters and update-state reads. With explicit `pagination: true`, it also supports `messages.getBotCallbackAnswer` for group inline buttons (bounded message ID and 1..64 bytes of callback data; game/password callbacks are rejected). Both version and ready frames advertise `bot-pagination`. The parent binds each callback to the configured group and a freshly observed navigation button, saves every page, and serializes requests. Sending, joining and
 interactive login are not exposed. RPC errors, including `FLOOD_WAIT`, are
 returned to the parent application so it can persist and honor cooldowns. The
 parent supplies group restrictions, scheduling, retry policy and logging.

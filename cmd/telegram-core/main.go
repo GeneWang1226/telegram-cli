@@ -17,7 +17,7 @@ var version = "dev"
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
-		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"version": version, "protocol": corebridge.Protocol, "layer": tg.Layer})
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"version": version, "protocol": corebridge.Protocol, "layer": tg.Layer, "capabilities": corebridge.Capabilities})
 		return
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

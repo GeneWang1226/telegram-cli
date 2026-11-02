@@ -22,12 +22,15 @@ import (
 const Protocol = 1
 const MaxFrame = 32 << 20
 
+var Capabilities = []string{"bot-pagination"}
+
 type Config struct {
 	Protocol    int    `json:"protocol"`
 	APIID       int    `json:"api_id"`
 	APIHash     string `json:"api_hash"`
 	SessionFile string `json:"session_file"`
 	Updates     bool   `json:"updates"`
+	Pagination  bool   `json:"pagination"`
 }
 
 type Request struct {
@@ -43,12 +46,13 @@ type RPCError struct {
 }
 
 type Frame struct {
-	Kind     string    `json:"kind"`
-	ID       uint64    `json:"id,omitempty"`
-	Protocol int       `json:"protocol,omitempty"`
-	Layer    int       `json:"layer,omitempty"`
-	Payload  []byte    `json:"payload,omitempty"`
-	Error    *RPCError `json:"error,omitempty"`
+	Kind         string    `json:"kind"`
+	ID           uint64    `json:"id,omitempty"`
+	Protocol     int       `json:"protocol,omitempty"`
+	Layer        int       `json:"layer,omitempty"`
+	Capabilities []string  `json:"capabilities,omitempty"`
+	Payload      []byte    `json:"payload,omitempty"`
+	Error        *RPCError `json:"error,omitempty"`
 }
 
 type emitter struct {
@@ -77,6 +81,8 @@ func decodeRequest(r Request) (bin.Object, error) {
 		method = &tg.MessagesGetSearchCountersRequest{}
 	case "messages.getHistory":
 		method = &tg.MessagesGetHistoryRequest{}
+	case "messages.getBotCallbackAnswer":
+		method = &tg.MessagesGetBotCallbackAnswerRequest{}
 	case "updates.getState":
 		method = &tg.UpdatesGetStateRequest{}
 	default:
@@ -88,6 +94,9 @@ func decodeRequest(r Request) (bin.Object, error) {
 	}
 	if h, ok := method.(*tg.MessagesGetHistoryRequest); ok && (h.Limit < 1 || h.Limit > 100) {
 		return nil, errors.New("history limit is out of range")
+	}
+	if callback, ok := method.(*tg.MessagesGetBotCallbackAnswerRequest); ok && !validCallback(callback) {
+		return nil, errors.New("invalid pagination callback")
 	}
 	return method, nil
 }
@@ -129,7 +138,7 @@ func Serve(ctx context.Context, input io.Reader, output io.Writer) error {
 	}
 	client := telegram.NewClient(cfg.APIID, cfg.APIHash, options)
 	err := client.Run(ctx, func(ctx context.Context) error {
-		if err := e.send(Frame{Kind: "ready", Protocol: Protocol, Layer: tg.Layer}); err != nil {
+		if err := e.send(Frame{Kind: "ready", Protocol: Protocol, Layer: tg.Layer, Capabilities: Capabilities}); err != nil {
 			return err
 		}
 		requests := make(chan Request)
@@ -156,7 +165,7 @@ func Serve(ctx context.Context, input io.Reader, output io.Writer) error {
 			case err := <-readErr:
 				return err
 			case request := <-requests:
-				method, err := decodeRequest(request)
+				method, err := decodeConfiguredRequest(request, cfg.Pagination)
 				if err != nil {
 					if err := e.send(Frame{Kind: "result", ID: request.ID, Error: &RPCError{Code: 400, Type: "CORE_METHOD_INVALID"}}); err != nil {
 						return err
@@ -181,4 +190,28 @@ func Serve(ctx context.Context, input io.Reader, output io.Writer) error {
 		_ = e.send(Frame{Kind: "fatal", Error: classify(err)})
 	}
 	return err
+}
+
+// Pagination is the only mutating RPC the bridge accepts, explicitly opted in
+// by the parent, which binds the payload to an observed button and group.
+func validCallback(r *tg.MessagesGetBotCallbackAnswerRequest) bool {
+	if r == nil || r.Game || r.Password != nil || r.Flags.Has(1) || r.Flags.Has(2) || r.MsgID < 1 || r.MsgID > 1<<31-1 || len(r.Data) < 1 || len(r.Data) > 64 {
+		return false
+	}
+	switch p := r.Peer.(type) {
+	case *tg.InputPeerChannel:
+		return p != nil && p.ChannelID > 0 && p.AccessHash != 0
+	case *tg.InputPeerChat:
+		return p != nil && p.ChatID > 0
+	default:
+		return false
+	}
+}
+
+func decodeConfiguredRequest(r Request, pagination bool) (bin.Object, error) {
+	method, err := decodeRequest(r)
+	if _, ok := method.(*tg.MessagesGetBotCallbackAnswerRequest); ok && !pagination {
+		return nil, errors.New("pagination is disabled")
+	}
+	return method, err
 }

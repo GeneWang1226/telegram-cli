@@ -80,3 +80,26 @@ func TestServeRejectsInvalidConfigurationBeforeNetwork(t *testing.T) {
 		}
 	}
 }
+
+func TestPaginationCallbacksRequireOptInAndBoundedGroupPayload(t *testing.T) {
+	valid := &tg.MessagesGetBotCallbackAnswerRequest{Peer: &tg.InputPeerChat{ChatID: 7}, MsgID: 101}
+	valid.SetData([]byte("next-2"))
+	request := encodedRequest(t, valid)
+	if _, err := decodeConfiguredRequest(request, false); err == nil {
+		t.Fatal("callback allowed without opt-in")
+	}
+	if _, err := decodeConfiguredRequest(request, true); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range []*tg.MessagesGetBotCallbackAnswerRequest{
+		{Peer: &tg.InputPeerUser{UserID: 7, AccessHash: 1}, MsgID: 101, Data: []byte("next")},
+		{Peer: &tg.InputPeerChat{ChatID: 7}, MsgID: 0, Data: []byte("next")},
+		{Peer: &tg.InputPeerChat{ChatID: 7}, MsgID: 101, Data: bytes.Repeat([]byte("x"), 65)},
+		{Peer: &tg.InputPeerChat{ChatID: 7}, MsgID: 101, Data: []byte("next"), Game: true},
+		{Peer: &tg.InputPeerChat{ChatID: 7}, MsgID: 101},
+	} {
+		if _, err := decodeConfiguredRequest(encodedRequest(t, r), true); err == nil {
+			t.Fatal("invalid pagination callback allowed")
+		}
+	}
+}
