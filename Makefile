@@ -8,7 +8,8 @@ build:
 	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/teletui
 	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(BUILD_DIR)/telegram-mcp ./cmd/telegram-mcp
 	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(BUILD_DIR)/telegram-api ./cmd/telegram-api
-	@echo "Built: $(BUILD_DIR)/$(BINARY_NAME) $(BUILD_DIR)/telegram-mcp $(BUILD_DIR)/telegram-api"
+	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(BUILD_DIR)/telegram-core ./cmd/telegram-core
+	@echo "Built: $(BUILD_DIR)/$(BINARY_NAME) $(BUILD_DIR)/telegram-mcp $(BUILD_DIR)/telegram-api $(BUILD_DIR)/telegram-core"
 
 run: build
 	./$(BUILD_DIR)/$(BINARY_NAME)

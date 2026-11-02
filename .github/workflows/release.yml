@@ -89,6 +89,7 @@ jobs:
           go build -trimpath -ldflags="-s -w" -o "dist/tele-tui${EXT}" ./cmd/teletui
           go build -trimpath -ldflags="-s -w" -o "dist/telegram-mcp${EXT}" ./cmd/telegram-mcp
           go build -trimpath -ldflags="-s -w" -o "dist/telegram-api${EXT}" ./cmd/telegram-api
+          go build -trimpath -ldflags="-s -w" -o "dist/telegram-core${EXT}" ./cmd/telegram-core
 
       - name: Package
         env:
@@ -137,6 +138,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           name: ${{ needs.version.outputs.tag }}
           files: packages/*
           generate_release_notes: true

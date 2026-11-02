@@ -362,3 +362,58 @@ MIT License - see [LICENSE](LICENSE) for details.
 - [Lipgloss](https://github.com/charmbracelet/lipgloss) — Terminal styling
 - [Glamour](https://github.com/charmbracelet/glamour) — Markdown rendering
 - [gotd/td](https://github.com/gotd/td) — Pure Go Telegram (MTProto) client
+
+
+## Headless core for telegram-auto
+
+`telegram-core` is a separate binary for applications that manage their own
+collection, storage, logs and Web interface. It opens an existing authorized
+Telegram session and exposes a versioned JSON-lines protocol over stdin/stdout.
+No HTTP service or interactive login is started. Credentials travel over the
+private process pipe and are never included in diagnostics.
+
+```bash
+make build
+./bin/telegram-core --version
+```
+
+The version command returns JSON containing `version`, `protocol` and Telegram
+`layer`, without reading credentials or making network requests. The initial
+stdin record contains `protocol: 1`, `api_id`, `api_hash`, an absolute
+`session_file`, and `updates`. The process replies with a `ready` frame. Requests
+contain a unique `id`, the TL method name in `method`, and a base64 TL `payload`.
+Replies have `kind: result`, the matching ID, and either a base64 payload or an
+RPC error with `code`, `type` and `argument`. Pushes use `kind: update`; terminal
+errors use `kind: fatal`. Both peers must use the same protocol and Telegram TL
+layer. Frames are limited to 32 MiB; each request times out after 45 seconds.
+
+The bridge supports configuration lookup, username/invite resolution, bounded
+history reads, search counters and update-state reads. Sending, joining and
+interactive login are not exposed. RPC errors, including `FLOOD_WAIT`, are
+returned to the parent application so it can persist and honor cooldowns. The
+parent supplies group restrictions, scheduling, retry policy and logging.
+Session updates are written atomically with private permissions.
+
+### Automatic builds on push
+
+Every branch push runs CI and `.github/workflows/core.yml`. The core workflow
+checks the bridge tests, builds static Linux amd64/arm64 binaries, and publishes
+these assets to the rolling prerelease `core-latest`:
+
+- `telegram-core_linux_amd64`
+- `telegram-core_linux_arm64`
+- `checksums.txt` (SHA-256)
+- `build.json` (source commit, branch and protocol)
+
+The workflow uses the repository's `GITHUB_TOKEN` with `contents: write` in its
+publish job. Enable GitHub Actions in the fork; no separate publishing token is
+needed. `core-latest` tracks the most recently published branch push. CI also
+builds the core alongside the other binaries for every supported platform; main
+pushes retain the existing automatic versioned release flow and include the
+core in each package.
+
+[telegram-auto](https://github.com/GeneWang1226/telegram-auto) fetches the rolling
+release, verifies the checksum and protocol/layer, then switches its active
+core. It keeps the previous usable core if an automatic update fails. For a
+private repository, configure `GH_TOKEN` in telegram-auto with release read
+access. The core's source commit is available in `--version` and `build.json`.

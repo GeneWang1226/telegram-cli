@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: ['**']
   pull_request:
     branches: [main, dev]
 
@@ -59,6 +59,7 @@ jobs:
           go build -trimpath -ldflags="-s -w" -o "dist/tele-tui${EXT}" ./cmd/teletui
           go build -trimpath -ldflags="-s -w" -o "dist/telegram-mcp${EXT}" ./cmd/telegram-mcp
           go build -trimpath -ldflags="-s -w" -o "dist/telegram-api${EXT}" ./cmd/telegram-api
+          go build -trimpath -ldflags="-s -w" -o "dist/telegram-core${EXT}" ./cmd/telegram-core
 
       - uses: actions/upload-artifact@v4
         with:

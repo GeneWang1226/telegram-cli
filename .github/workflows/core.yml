@@ -1,0 +1,76 @@
+name: Build and publish Telegram core
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: telegram-core-release
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test core protocol
+        run: go test ./internal/corebridge ./cmd/telegram-core
+      - name: Build headless core
+        env:
+          GOOS: linux
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: '0'
+        run: |
+          mkdir -p release
+          go build -trimpath -ldflags="-s -w -X main.version=${GITHUB_SHA}" -o "release/telegram-core_linux_${GOARCH}" ./cmd/telegram-core
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-linux-${{ matrix.arch }}
+          path: release/*
+          retention-days: 14
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: core-linux-*
+          path: release
+          merge-multiple: true
+      - name: Record checksums and build provenance
+        run: |
+          cd release
+          sha256sum telegram-core_* > checksums.txt
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          Path('build.json').write_text(json.dumps({'commit': os.environ['GITHUB_SHA'], 'ref': os.environ['GITHUB_REF_NAME'], 'protocol': 1}) + '\n')
+          PY
+      - name: Publish rolling core channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if gh release view core-latest >/dev/null 2>&1; then
+            gh release upload core-latest release/* --clobber
+            gh release edit core-latest --title "Telegram core ${GITHUB_SHA:0:12}" --notes "Built from commit ${GITHUB_SHA} on branch ${GITHUB_REF_NAME}. Protocol 1."
+            gh api --method PATCH "repos/${GH_REPO}/git/refs/tags/core-latest" -f sha="$GITHUB_SHA" -F force=true
+          else
+            gh release create core-latest release/* --target "$GITHUB_SHA" --prerelease --title "Telegram core ${GITHUB_SHA:0:12}" --notes "Built from commit ${GITHUB_SHA} on branch ${GITHUB_REF_NAME}. Protocol 1."
+          fi
